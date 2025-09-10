@@ -9,7 +9,7 @@
 
 ## 🚀 Live Demo
 
-**[✨ Try it Live](https://giogioanni.github.io/quote-generator)**
+**[✨ Try it Live](https://giogioanni.github.io/quote-it)**
 
 ## 📸 Screenshots
 

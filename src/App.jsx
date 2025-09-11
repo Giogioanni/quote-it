@@ -134,109 +134,100 @@ function App() {
     return `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&size=150&background=gradient&color=fff`;
   };
 
-  //  mobile-optimized version
+  // Simplified API fetch for mobile
   const fetchQuoteFromAPI = async (category = '') => {
+    const baseUrl = 'https://api.quotable.io/random';
+    const url = category ? `${baseUrl}?tags=${category}` : baseUrl;
+    
+    console.log('Mobile fetch URL:', url);
+    
     try {
-      const url = category 
-        ? `https://api.quotable.io/random?tags=${category}`
-        : 'https://api.quotable.io/random';
-      
-      console.log('Fetching quote from:', url);
-      
-      // Mobile-optimized fetch with timeout and headers
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout for mobile
-      
       const response = await fetch(url, {
         method: 'GET',
         headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'User-Agent': 'Quote-It-App/1.0'
-        },
-        signal: controller.signal,
-        cache: 'no-cache' // Prevent mobile caching issues
+          'Accept': 'application/json'
+        }
       });
       
-      clearTimeout(timeoutId);
+      console.log('Response status:', response.status);
       
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(`API returned ${response.status}`);
       }
       
       const data = await response.json();
-      console.log('Quote API success:', data);
+      console.log('Raw API data:', data);
       
-      // Validate the response 
       if (!data.content && !data.text) {
-        throw new Error('Invalid quote data received');
+        throw new Error('No quote text in response');
       }
       
       return data;
     } catch (error) {
-      console.error('Quote API Error:', error.name, error.message);
-      
-      // If it's a timeout on mobile, try one more time with different approach
-      if (error.name === 'AbortError') {
-        console.log('Timeout detected, trying fallback approach...');
-        try {
-          const fallbackResponse = await fetch('https://api.quotable.io/random', {
-            method: 'GET',
-            mode: 'cors'
-          });
-          if (fallbackResponse.ok) {
-            return await fallbackResponse.json();
-          }
-        } catch (fallbackError) {
-          console.error('Fallback also failed:', fallbackError);
-        }
-      }
-      
-      throw error; // handleClick deal with the error
+      console.error('fetchQuoteFromAPI failed:', error);
+      throw error;
     }
   };
 
   const handleClick = async () => {
     setLoading(true);
     try {
-      const quoteData = showFavorites && favorites.length > 0 
-        ? favorites[Math.floor(Math.random() * favorites.length)]
-        : await fetchQuoteFromAPI(selectedCategory);
-
-      console.log('Quote data received:', quoteData); 
-
-      // tries both .content and .text
-      const quoteText = quoteData.content || quoteData.text || quoteData.quote || "Quote not available";
+      let quoteData;
       
-      if (!showFavorites || favorites.length === 0) {
-        // Fetch Wikipedia and author image data
-        const [wikipediaData, authorImageUrl] = await Promise.all([
-          fetchWikipediaData(quoteData.author),
-          fetchAuthorImage(quoteData.author)
-        ]);
-
-        setQuote({
-          text: quoteText, 
-          author: quoteData.author,
-          image: authorImageUrl,
-          tags: quoteData.tags || [],
-          wikipedia: wikipediaData
-        });
+      if (showFavorites && favorites.length > 0) {
+        // Use favorites
+        quoteData = favorites[Math.floor(Math.random() * favorites.length)];
       } else {
-        setQuote({
-          text: quoteText, 
-          author: quoteData.author,
-          image: quoteData.image,
+        // Fetch new quote - simplified for mobile
+        console.log('Attempting to fetch quote...');
+        quoteData = await fetchQuoteFromAPI(selectedCategory);
+        console.log('Quote received:', quoteData);
+      }
+
+      // Handle the quote data properly
+      const quoteText = quoteData.content || quoteData.text || "Unable to load quote";
+      
+      if (showFavorites && favorites.length > 0) {
+        // Just display the favorite quote as-is
+        setQuote(quoteData);
+      } else {
+        // For new quotes, build the quote object step by step
+        const newQuote = {
+          text: quoteText,
+          author: quoteData.author || "Unknown Author",
           tags: quoteData.tags || [],
-          wikipedia: quoteData.wikipedia || { exists: false, url: '#' }
-        });
+          image: `https://ui-avatars.com/api/?name=${encodeURIComponent(quoteData.author || 'Unknown')}&size=150&background=gradient&color=fff`,
+          wikipedia: { exists: false, url: '#' }
+        };
+
+        // Try to enhance with Wikipedia data (but don't fail if it doesn't work)
+        try {
+          const [wikipediaData, authorImageUrl] = await Promise.allSettled([
+            fetchWikipediaData(quoteData.author),
+            fetchAuthorImage(quoteData.author)
+          ]);
+
+          if (wikipediaData.status === 'fulfilled') {
+            newQuote.wikipedia = wikipediaData.value;
+          }
+          
+          if (authorImageUrl.status === 'fulfilled') {
+            newQuote.image = authorImageUrl.value;
+          }
+        } catch (enhanceError) {
+          console.log('Enhancement failed, using basic quote:', enhanceError);
+        }
+
+        setQuote(newQuote);
       }
     } catch (error) {
-      console.error('Error generating quote:', error);
+      console.error('Complete quote generation failed:', error);
+      
+      // Only use fallback if everything fails
       setQuote({
-        text: "The only way to do great work is to love what you do.",
-        author: "Steve Jobs",
-        image: "https://ui-avatars.com/api/?name=Steve+Jobs&size=150&background=gradient&color=fff",
+        text: "The way to get started is to quit talking and begin doing.",
+        author: "Walt Disney",
+        image: "https://ui-avatars.com/api/?name=Walt+Disney&size=150&background=gradient&color=fff",
         tags: ["motivational"],
         wikipedia: { exists: false, url: '#' }
       });

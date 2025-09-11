@@ -145,75 +145,38 @@ function App() {
     return `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&size=150&background=random&color=fff`;
   };
 
-  //  mobile-compatible version
   const fetchQuoteFromAPI = async (category = '') => {
-    const apiUrl = category 
-      ? `https://api.quotable.io/random?tags=${category}`
-      : 'https://api.quotable.io/random';
-
     try {
-      console.log('Fetching quote from:', apiUrl); // Debug log
-
-      const response = await fetch(apiUrl, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-cache',
-          'User-Agent': 'Quote-It/1.0 (Mobile)'
-        },
-        mode: 'cors',
-        cache: 'no-store'
-      });
-
-      console.log('Response status:', response.status); // Debug log
-
-      if (!response.ok) {
-        throw new Error(`Quote API error: ${response.status}`);
-      }
-
+      const url = category 
+        ? `https://api.quotable.io/random?tags=${category}`
+        : 'https://api.quotable.io/random';
+      
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('Failed to fetch quote');
+      
       const data = await response.json();
-      console.log('Quote data received:', data); // Debug log
 
-      // Validate the data
-      if (!data.content || !data.author) {
-        throw new Error('Invalid quote data received');
-      }
+      // Get Wikipedia and author image
+      const [wikipediaData, authorImageUrl] = await Promise.all([
+        fetchWikipediaData(data.author),
+        fetchAuthorImage(data.author)
+      ]);
 
-      // Return complete quote without waiting for image/wiki data
-      const quote = {
+      return {
         text: data.content,
         author: data.author,
         tags: data.tags || [],
-        image: `https://ui-avatars.com/api/?name=${encodeURIComponent(data.author)}&size=150&background=random&color=fff`,
-        wikipedia: { 
-          exists: true, 
-          url: `https://en.wikipedia.org/wiki/${encodeURIComponent(data.author)}`
-        }
+        image: authorImageUrl,
+        wikipedia: wikipediaData
       };
-
-      // Try to enhance with image and wiki data in the background
-      Promise.all([
-        fetchAuthorImage(data.author),
-        fetchWikipediaData(data.author)
-      ]).then(([imageUrl, wikiData]) => {
-        if (imageUrl) quote.image = imageUrl;
-        if (wikiData) quote.wikipedia = wikiData;
-      }).catch(error => {
-        console.log('Enhancement failed, using basic data:', error);
-      });
-
-      return quote;
     } catch (error) {
-      console.error('Quote fetch failed:', error);
+      console.error('Error:', error);
       throw error;
     }
   };
 
-  // Simplified handleClick that focuses on just getting quotes working
   const handleClick = async () => {
     setLoading(true);
-    
     try {
       if (showFavorites && favorites.length > 0) {
         const randomFavorite = favorites[Math.floor(Math.random() * favorites.length)];
@@ -223,16 +186,7 @@ function App() {
         setQuote(newQuote);
       }
     } catch (error) {
-      console.error('Failed to generate quote:', error);
-      // Don't use fallback quotes - retry the API call
-      try {
-        const retryQuote = await fetchQuoteFromAPI(selectedCategory);
-        setQuote(retryQuote);
-      } catch (retryError) {
-        console.error('Retry also failed:', retryError);
-        // Only now show an error to the user
-        alert('Unable to load quotes. Please check your connection and try again.');
-      }
+      console.error('Error generating quote:', error);
     } finally {
       setLoading(false);
     }

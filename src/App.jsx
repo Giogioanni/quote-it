@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import './App.css'
 
+const UNSPLASH_ACCESS_KEY = import.meta.env.VITE_UNSPLASH_ACCESS_KEY;
+
 function App() {
   const categories = [
     { name: 'All', tag: '' },
@@ -106,174 +108,115 @@ function App() {
 
   const fetchAuthorImage = async (author) => {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000); // Short timeout for images
-    
-      const searchUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(author)}`;
-      const response = await fetch(searchUrl, {
-        signal: controller.signal,
+      // First try Wikipedia API
+      const wikiResponse = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(author)}`, {
         headers: {
           'Accept': 'application/json',
-          'User-Agent': 'Quote-It-App/1.0'
+          'Api-User-Agent': 'Quote-It/1.0 (https://giogioanni.github.io/quote-it/)'
         }
       });
-    
-      clearTimeout(timeoutId);
-    
-      if (response.ok) {
-        const data = await response.json();
+
+      if (wikiResponse.ok) {
+        const data = await wikiResponse.json();
         if (data.thumbnail && data.thumbnail.source) {
           return data.thumbnail.source;
         }
       }
+
+      // If Wikipedia fails, try searching for public domain images
+      const searchResponse = await fetch(`https://api.unsplash.com/search/photos?query=${encodeURIComponent(author)}&per_page=1`, {
+        headers: {
+          'Authorization': `Client-ID ${UNSPLASH_ACCESS_KEY}`,
+          'Accept-Version': 'v1'
+        }
+      });
+
+      if (searchResponse.ok) {
+        const searchData = await searchResponse.json();
+        if (searchData.results && searchData.results.length > 0) {
+          return searchData.results[0].urls.small;
+        }
+      }
     } catch (error) {
-      console.log('Author image fetch failed for:', author, error.message);
+      console.log('Image fetch failed:', error);
     }
-    
-    // Always return UI Avatar fallback
-    return `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&size=150&background=gradient&color=fff`;
+
+    // Final fallback to UI Avatars with gradient
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&size=150&background=random&color=fff`;
   };
 
   //  mobile-compatible version
   const fetchQuoteFromAPI = async (category = '') => {
-    // multiple API endpoints for mobile compatibility
-    const apiAttempts = [
-      // Primary API
-      {
-        url: category 
-          ? `https://api.quotable.io/random?tags=${category}`
-          : 'https://api.quotable.io/random',
-        type: 'quotable'
-      },
-      // Backup API through CORS proxy
-      {
-        url: category
-          ? `https://cors-anywhere.herokuapp.com/https://api.quotable.io/random?tags=${category}`
-          : 'https://cors-anywhere.herokuapp.com/https://api.quotable.io/random',
-        type: 'quotable-proxy'
-      },
-      // Alternative quote API
-      {
-        url: 'https://zenquotes.io/api/random',
-        type: 'zenquotes'
-      }
-    ];
+    const apiUrl = category 
+      ? `https://api.quotable.io/random?tags=${category}`
+      : 'https://api.quotable.io/random';
 
-    for (let i = 0; i < apiAttempts.length; i++) {
-      const attempt = apiAttempts[i];
-      console.log(`Mobile API attempt ${i + 1}:`, attempt.url);
-      
-      try {
-        const response = await fetch(attempt.url, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-            ...(attempt.type === 'quotable-proxy' && {
-              'X-Requested-With': 'XMLHttpRequest'
-            })
-          },
-          mode: 'cors'
-        });
-
-        console.log(`Attempt ${i + 1} status:`, response.status);
-
-        if (response.ok) {
-          const data = await response.json();
-          console.log(`Attempt ${i + 1} data:`, data);
-
-          // Normalize response based on API type
-          if (attempt.type === 'zenquotes') {
-            const quote = Array.isArray(data) ? data[0] : data;
-            return {
-              content: quote.q || quote.text,
-              author: quote.a || quote.author,
-              tags: category ? [category] : ['wisdom']
-            };
-          } else {
-            // Quotable API format
-            return {
-              content: data.content || data.text,
-              author: data.author,
-              tags: data.tags || []
-            };
-          }
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'Quote-It/1.0'
         }
-      } catch (error) {
-        console.error(`API attempt ${i + 1} failed:`, error);
-        continue; // Try next API
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
+
+      const data = await response.json();
+      
+      // Validate quote data
+      if (!data.content || !data.author) {
+        throw new Error('Invalid quote data received');
+      }
+
+      // Get author image and Wikipedia data concurrently
+      const [imageUrl, wikiData] = await Promise.all([
+        fetchAuthorImage(data.author),
+        fetchWikipediaData(data.author)
+      ]);
+
+      // Return complete quote object
+      return {
+        text: data.content,
+        author: data.author,
+        tags: data.tags || [],
+        image: imageUrl,
+        wikipedia: wikiData
+      };
+    } catch (error) {
+      console.error('Quote fetch failed:', error);
+      throw error;
     }
-    
-    // If all APIs fail, throw error
-    throw new Error('All quote APIs failed on mobile');
   };
 
   // Simplified handleClick that focuses on just getting quotes working
   const handleClick = async () => {
     setLoading(true);
-    console.log('=== MOBILE QUOTE GENERATION START ===');
     
     try {
-      let quoteData;
-      
       if (showFavorites && favorites.length > 0) {
-        console.log('Using favorites');
-        quoteData = favorites[Math.floor(Math.random() * favorites.length)];
-        setQuote(quoteData);
+        const randomFavorite = favorites[Math.floor(Math.random() * favorites.length)];
+        setQuote(randomFavorite);
       } else {
-        console.log('Fetching new quote for mobile...');
-        quoteData = await fetchQuoteFromAPI(selectedCategory);
-        console.log('Mobile quote success:', quoteData);
-        
-        // basic quote without Wikipedia enhancement for mobile
-        const basicQuote = {
-          text: quoteData.content || quoteData.text,
-          author: quoteData.author,
-          tags: quoteData.tags || [],
-          image: `https://ui-avatars.com/api/?name=${encodeURIComponent(quoteData.author)}&size=150&background=random&color=fff`,
-          wikipedia: { 
-            exists: true, 
-            url: `https://en.wikipedia.org/wiki/${encodeURIComponent(quoteData.author)}` 
-          }
-        };
-        
-        setQuote(basicQuote);
-        console.log('Mobile quote set successfully');
+        const newQuote = await fetchQuoteFromAPI(selectedCategory);
+        setQuote(newQuote);
       }
     } catch (error) {
-      console.error('=== MOBILE QUOTE FAILED ===', error);
-      
-      // Mobile-specific fallback quotes
-      const mobileFallbacks = [
-        {
-          text: "The future belongs to those who believe in the beauty of their dreams.",
-          author: "Eleanor Roosevelt",
-          tags: ["inspirational"],
-          image: "https://ui-avatars.com/api/?name=Eleanor+Roosevelt&size=150&background=random&color=fff",
-          wikipedia: { exists: true, url: "https://en.wikipedia.org/wiki/Eleanor_Roosevelt" }
-        },
-        {
-          text: "It is during our darkest moments that we must focus to see the light.",
-          author: "Aristotle",
-          tags: ["wisdom"],
-          image: "https://ui-avatars.com/api/?name=Aristotle&size=150&background=random&color=fff",
-          wikipedia: { exists: true, url: "https://en.wikipedia.org/wiki/Aristotle" }
-        },
-        {
-          text: "Success is not final, failure is not fatal: it is the courage to continue that counts.",
-          author: "Winston Churchill",
-          tags: ["success"],
-          image: "https://ui-avatars.com/api/?name=Winston+Churchill&size=150&background=random&color=fff",
-          wikipedia: { exists: true, url: "https://en.wikipedia.org/wiki/Winston_Churchill" }
-        }
-      ];
-      
-      const randomFallback = mobileFallbacks[Math.floor(Math.random() * mobileFallbacks.length)];
-      setQuote(randomFallback);
-      console.log('Using mobile fallback quote');
+      console.error('Failed to generate quote:', error);
+      // Don't use fallback quotes - retry the API call
+      try {
+        const retryQuote = await fetchQuoteFromAPI(selectedCategory);
+        setQuote(retryQuote);
+      } catch (retryError) {
+        console.error('Retry also failed:', retryError);
+        // Only now show an error to the user
+        alert('Unable to load quotes. Please check your connection and try again.');
+      }
     } finally {
       setLoading(false);
-      console.log('=== MOBILE QUOTE GENERATION END ===');
     }
   };
 

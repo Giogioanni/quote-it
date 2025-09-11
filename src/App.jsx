@@ -70,9 +70,33 @@ function App() {
     };
   };
 
-  const fetchAuthorImage = async (authorName) => {
+  const fetchWikipediaData = async (author) => {
     try {
-      const searchUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(authorName)}`;
+      const searchUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(author)}`;
+      const response = await fetch(searchUrl);
+      
+      if (response.ok) {
+        const data = await response.json();
+        return {
+          exists: true,
+          url: `https://en.wikipedia.org/wiki/${encodeURIComponent(author)}`,
+          extract: data.extract
+        };
+      }
+    } catch (error) {
+      console.log('Wikipedia fetch failed for:', author);
+    }
+    
+    return {
+      exists: false,
+      url: '#'
+    };
+  };
+
+  const fetchAuthorImage = async (author) => {
+    try {
+      // get image from Wikipedia
+      const searchUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(author)}`;
       const response = await fetch(searchUrl);
       
       if (response.ok) {
@@ -82,29 +106,11 @@ function App() {
         }
       }
     } catch (error) {
-      console.log(`No Wikipedia image found for ${authorName}`);
+      console.log('Author image fetch failed for:', author);
     }
     
-    try {
-      const directSearchUrl = `https://en.wikipedia.org/w/api.php?action=query&format=json&prop=pageimages&titles=${encodeURIComponent(authorName)}&pithumbsize=150&origin=*`;
-      const directResponse = await fetch(directSearchUrl);
-      
-      if (directResponse.ok) {
-        const directData = await directResponse.json();
-        const pages = directData.query?.pages;
-        if (pages) {
-          const pageId = Object.keys(pages)[0];
-          const page = pages[pageId];
-          if (page.thumbnail && page.thumbnail.source) {
-            return page.thumbnail.source;
-          }
-        }
-      }
-    } catch (error) {
-      console.log(`Direct Wikipedia search failed for ${authorName}`);
-    }
-    
-    return `https://ui-avatars.com/api/?name=${encodeURIComponent(authorName)}&size=150&background=gradient&color=fff&font-size=0.6&format=png`;
+    // Fallback to UI Avatars
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&size=150&background=gradient&color=fff`;
   };
 
   const fetchQuoteFromAPI = async (category = '') => {

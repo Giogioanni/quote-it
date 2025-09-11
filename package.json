@@ -1,14 +1,14 @@
 {
-  "name": "quote-generator",
+  "name": "quote-it",
   "private": false,
   "version": "1.0.0",
   "description": "A modern React application for generating quotes with Wikipedia integration",
   "author": "Giogioanni",
   "license": "MIT",
-  "homepage": "https://giogioanni.github.io/quote-generator",
+  "homepage": "https://giogioanni.github.io/quote-it",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Giogioanni/quote-generator.git"
+    "url": "https://github.com/Giogioanni/quote-it.git"
   },
   "keywords": [
     "react",

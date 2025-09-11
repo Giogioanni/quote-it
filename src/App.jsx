@@ -33,7 +33,7 @@ function App() {
     document.body.className = darkMode ? 'dark' : 'light';
   }, [darkMode]);
 
-  // Add this useEffect to load initial quote
+  
   useEffect(() => {
     handleClick(); // Load initial quote
   }, []);
@@ -109,44 +109,54 @@ function App() {
 
   const fetchQuoteFromAPI = async (category = '') => {
     try {
-      let url = 'https://api.quotable.io/quotes/random?limit=1';
+      const url = category 
+        ? `https://api.quotable.io/random?tags=${category}`
+        : 'https://api.quotable.io/random';
       
-      if (category) {
-        url += `&tags=${category}`;
-      }
+      console.log('Fetching from:', url); 
       
       const response = await fetch(url);
+      
+      if (!response.ok) {
+        console.error('API Response not ok:', response.status, response.statusText);
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const data = await response.json();
-      const quoteData = Array.isArray(data) ? data[0] : data;
-      
-      const [authorImage, wikipediaInfo] = await Promise.all([
-        fetchAuthorImage(quoteData.author),
-        checkWikipediaExists(quoteData.author)
-      ]);
-      
-      return {
-        text: quoteData.content,
-        author: quoteData.author,
-        image: authorImage,
-        tags: quoteData.tags || [],
-        length: quoteData.length || 0,
-        wikipedia: wikipediaInfo
-      };
+      console.log('Quote data received:', data); 
+      return data;
     } catch (error) {
-      console.error('Failed to fetch quote:', error);
+      console.error('Fetch error:', error);
       throw error;
     }
   };
 
   const handleClick = async () => {
-    if (showFavorites) return;
-    
     setLoading(true);
     try {
-      const newQuote = await fetchQuoteFromAPI(selectedCategory);
-      setQuote(newQuote);
+      console.log('Starting quote fetch...'); // Debug log
+      
+      const quoteData = showFavorites && favorites.length > 0 
+        ? favorites[Math.floor(Math.random() * favorites.length)]
+        : await fetchQuoteFromAPI(selectedCategory);
+      
+      console.log('Quote data:', quoteData); // Debug log
+      
+      if (!quoteData) {
+        throw new Error('No quote data received');
+      }
+      
+      setQuote(quoteData);
     } catch (error) {
-      console.error('Error fetching quote:', error);
+      console.error('Quote generation error:', error);
+      // user-friendly error
+      setQuote({
+        text: "Unable to load quote. Please check your internet connection and try again.",
+        author: "Quote it",
+        image: "https://ui-avatars.com/api/?name=Quote+it&size=150&background=gradient&color=fff",
+        tags: [],
+        wikipedia: { exists: false, url: '#' }
+      });
     } finally {
       setLoading(false);
     }
@@ -196,6 +206,29 @@ function App() {
     setShowFavorites(!showFavorites);
     if (!showFavorites && favorites.length > 0) {
       showRandomFavorite();
+    }
+  };
+
+  const fetchWithTimeout = async (url, timeout = 10000) => {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    
+    try {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      });
+      clearTimeout(id);
+      return response;
+    } catch (error) {
+      clearTimeout(id);
+      if (error.name === 'AbortError') {
+        throw new Error('Request timeout - please check your connection');
+      }
+      throw error;
     }
   };
 

@@ -134,105 +134,146 @@ function App() {
     return `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&size=150&background=gradient&color=fff`;
   };
 
-  // Simplified API fetch for mobile
+  //  mobile-compatible version
   const fetchQuoteFromAPI = async (category = '') => {
-    const baseUrl = 'https://api.quotable.io/random';
-    const url = category ? `${baseUrl}?tags=${category}` : baseUrl;
-    
-    console.log('Mobile fetch URL:', url);
-    
-    try {
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json'
+    // multiple API endpoints for mobile compatibility
+    const apiAttempts = [
+      // Primary API
+      {
+        url: category 
+          ? `https://api.quotable.io/random?tags=${category}`
+          : 'https://api.quotable.io/random',
+        type: 'quotable'
+      },
+      // Backup API through CORS proxy
+      {
+        url: category
+          ? `https://cors-anywhere.herokuapp.com/https://api.quotable.io/random?tags=${category}`
+          : 'https://cors-anywhere.herokuapp.com/https://api.quotable.io/random',
+        type: 'quotable-proxy'
+      },
+      // Alternative quote API
+      {
+        url: 'https://zenquotes.io/api/random',
+        type: 'zenquotes'
+      }
+    ];
+
+    for (let i = 0; i < apiAttempts.length; i++) {
+      const attempt = apiAttempts[i];
+      console.log(`Mobile API attempt ${i + 1}:`, attempt.url);
+      
+      try {
+        const response = await fetch(attempt.url, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            ...(attempt.type === 'quotable-proxy' && {
+              'X-Requested-With': 'XMLHttpRequest'
+            })
+          },
+          mode: 'cors'
+        });
+
+        console.log(`Attempt ${i + 1} status:`, response.status);
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`Attempt ${i + 1} data:`, data);
+
+          // Normalize response based on API type
+          if (attempt.type === 'zenquotes') {
+            const quote = Array.isArray(data) ? data[0] : data;
+            return {
+              content: quote.q || quote.text,
+              author: quote.a || quote.author,
+              tags: category ? [category] : ['wisdom']
+            };
+          } else {
+            // Quotable API format
+            return {
+              content: data.content || data.text,
+              author: data.author,
+              tags: data.tags || []
+            };
+          }
         }
-      });
-      
-      console.log('Response status:', response.status);
-      
-      if (!response.ok) {
-        throw new Error(`API returned ${response.status}`);
+      } catch (error) {
+        console.error(`API attempt ${i + 1} failed:`, error);
+        continue; // Try next API
       }
-      
-      const data = await response.json();
-      console.log('Raw API data:', data);
-      
-      if (!data.content && !data.text) {
-        throw new Error('No quote text in response');
-      }
-      
-      return data;
-    } catch (error) {
-      console.error('fetchQuoteFromAPI failed:', error);
-      throw error;
     }
+    
+    // If all APIs fail, throw error
+    throw new Error('All quote APIs failed on mobile');
   };
 
+  // Simplified handleClick that focuses on just getting quotes working
   const handleClick = async () => {
     setLoading(true);
+    console.log('=== MOBILE QUOTE GENERATION START ===');
+    
     try {
       let quoteData;
       
       if (showFavorites && favorites.length > 0) {
-        // Use favorites
+        console.log('Using favorites');
         quoteData = favorites[Math.floor(Math.random() * favorites.length)];
-      } else {
-        // Fetch new quote - simplified for mobile
-        console.log('Attempting to fetch quote...');
-        quoteData = await fetchQuoteFromAPI(selectedCategory);
-        console.log('Quote received:', quoteData);
-      }
-
-      // Handle the quote data properly
-      const quoteText = quoteData.content || quoteData.text || "Unable to load quote";
-      
-      if (showFavorites && favorites.length > 0) {
-        // Just display the favorite quote as-is
         setQuote(quoteData);
       } else {
-        // For new quotes, build the quote object step by step
-        const newQuote = {
-          text: quoteText,
-          author: quoteData.author || "Unknown Author",
+        console.log('Fetching new quote for mobile...');
+        quoteData = await fetchQuoteFromAPI(selectedCategory);
+        console.log('Mobile quote success:', quoteData);
+        
+        // basic quote without Wikipedia enhancement for mobile
+        const basicQuote = {
+          text: quoteData.content || quoteData.text,
+          author: quoteData.author,
           tags: quoteData.tags || [],
-          image: `https://ui-avatars.com/api/?name=${encodeURIComponent(quoteData.author || 'Unknown')}&size=150&background=gradient&color=fff`,
-          wikipedia: { exists: false, url: '#' }
+          image: `https://ui-avatars.com/api/?name=${encodeURIComponent(quoteData.author)}&size=150&background=random&color=fff`,
+          wikipedia: { 
+            exists: true, 
+            url: `https://en.wikipedia.org/wiki/${encodeURIComponent(quoteData.author)}` 
+          }
         };
-
-        // Try to enhance with Wikipedia data (but don't fail if it doesn't work)
-        try {
-          const [wikipediaData, authorImageUrl] = await Promise.allSettled([
-            fetchWikipediaData(quoteData.author),
-            fetchAuthorImage(quoteData.author)
-          ]);
-
-          if (wikipediaData.status === 'fulfilled') {
-            newQuote.wikipedia = wikipediaData.value;
-          }
-          
-          if (authorImageUrl.status === 'fulfilled') {
-            newQuote.image = authorImageUrl.value;
-          }
-        } catch (enhanceError) {
-          console.log('Enhancement failed, using basic quote:', enhanceError);
-        }
-
-        setQuote(newQuote);
+        
+        setQuote(basicQuote);
+        console.log('Mobile quote set successfully');
       }
     } catch (error) {
-      console.error('Complete quote generation failed:', error);
+      console.error('=== MOBILE QUOTE FAILED ===', error);
       
-      // Only use fallback if everything fails
-      setQuote({
-        text: "The way to get started is to quit talking and begin doing.",
-        author: "Walt Disney",
-        image: "https://ui-avatars.com/api/?name=Walt+Disney&size=150&background=gradient&color=fff",
-        tags: ["motivational"],
-        wikipedia: { exists: false, url: '#' }
-      });
+      // Mobile-specific fallback quotes
+      const mobileFallbacks = [
+        {
+          text: "The future belongs to those who believe in the beauty of their dreams.",
+          author: "Eleanor Roosevelt",
+          tags: ["inspirational"],
+          image: "https://ui-avatars.com/api/?name=Eleanor+Roosevelt&size=150&background=random&color=fff",
+          wikipedia: { exists: true, url: "https://en.wikipedia.org/wiki/Eleanor_Roosevelt" }
+        },
+        {
+          text: "It is during our darkest moments that we must focus to see the light.",
+          author: "Aristotle",
+          tags: ["wisdom"],
+          image: "https://ui-avatars.com/api/?name=Aristotle&size=150&background=random&color=fff",
+          wikipedia: { exists: true, url: "https://en.wikipedia.org/wiki/Aristotle" }
+        },
+        {
+          text: "Success is not final, failure is not fatal: it is the courage to continue that counts.",
+          author: "Winston Churchill",
+          tags: ["success"],
+          image: "https://ui-avatars.com/api/?name=Winston+Churchill&size=150&background=random&color=fff",
+          wikipedia: { exists: true, url: "https://en.wikipedia.org/wiki/Winston_Churchill" }
+        }
+      ];
+      
+      const randomFallback = mobileFallbacks[Math.floor(Math.random() * mobileFallbacks.length)];
+      setQuote(randomFallback);
+      console.log('Using mobile fallback quote');
     } finally {
       setLoading(false);
+      console.log('=== MOBILE QUOTE GENERATION END ===');
     }
   };
 

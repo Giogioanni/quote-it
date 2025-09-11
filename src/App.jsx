@@ -152,40 +152,58 @@ function App() {
       : 'https://api.quotable.io/random';
 
     try {
+      console.log('Fetching quote from:', apiUrl); // Debug log
+
       const response = await fetch(apiUrl, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
-          'User-Agent': 'Quote-It/1.0'
-        }
+          'Cache-Control': 'no-cache',
+          'User-Agent': 'Quote-It/1.0 (Mobile)'
+        },
+        mode: 'cors',
+        cache: 'no-store'
       });
 
+      console.log('Response status:', response.status); // Debug log
+
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(`Quote API error: ${response.status}`);
       }
 
       const data = await response.json();
-      
-      // Validate quote data
+      console.log('Quote data received:', data); // Debug log
+
+      // Validate the data
       if (!data.content || !data.author) {
         throw new Error('Invalid quote data received');
       }
 
-      // Get author image and Wikipedia data concurrently
-      const [imageUrl, wikiData] = await Promise.all([
-        fetchAuthorImage(data.author),
-        fetchWikipediaData(data.author)
-      ]);
-
-      // Return complete quote object
-      return {
+      // Return complete quote without waiting for image/wiki data
+      const quote = {
         text: data.content,
         author: data.author,
         tags: data.tags || [],
-        image: imageUrl,
-        wikipedia: wikiData
+        image: `https://ui-avatars.com/api/?name=${encodeURIComponent(data.author)}&size=150&background=random&color=fff`,
+        wikipedia: { 
+          exists: true, 
+          url: `https://en.wikipedia.org/wiki/${encodeURIComponent(data.author)}`
+        }
       };
+
+      // Try to enhance with image and wiki data in the background
+      Promise.all([
+        fetchAuthorImage(data.author),
+        fetchWikipediaData(data.author)
+      ]).then(([imageUrl, wikiData]) => {
+        if (imageUrl) quote.image = imageUrl;
+        if (wikiData) quote.wikipedia = wikiData;
+      }).catch(error => {
+        console.log('Enhancement failed, using basic data:', error);
+      });
+
+      return quote;
     } catch (error) {
       console.error('Quote fetch failed:', error);
       throw error;

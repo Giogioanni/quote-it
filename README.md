@@ -1,4 +1,4 @@
-# ✨ Quote Quest ✨
+# ✨ Quote it ✨
 
 > A modern, elegant web application built with React and Vite that generates inspiring quotes from various categories with Wikipedia integration and favorites functionality.
 
@@ -9,7 +9,7 @@
 
 ## 🚀 Live Demo
 
-**[✨ Try it Live](https://giogioanni.github.io/quote-generator)**
+**[✨ Try it Live](https://giogioanni.github.io/quote-it)**
 
 ## 📸 Screenshots
 

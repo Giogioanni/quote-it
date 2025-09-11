@@ -134,27 +134,45 @@ function App() {
   const handleClick = async () => {
     setLoading(true);
     try {
-      console.log('Starting quote fetch...'); // Debug log
-      
       const quoteData = showFavorites && favorites.length > 0 
         ? favorites[Math.floor(Math.random() * favorites.length)]
         : await fetchQuoteFromAPI(selectedCategory);
+
+      console.log('Quote data received:', quoteData); 
+
+      // tries both .content and .text
+      const quoteText = quoteData.content || quoteData.text || quoteData.quote || "Quote not available";
       
-      console.log('Quote data:', quoteData); // Debug log
-      
-      if (!quoteData) {
-        throw new Error('No quote data received');
+      if (!showFavorites || favorites.length === 0) {
+        // Fetch Wikipedia and author image data
+        const [wikipediaData, authorImageUrl] = await Promise.all([
+          fetchWikipediaData(quoteData.author),
+          fetchAuthorImage(quoteData.author)
+        ]);
+
+        setQuote({
+          text: quoteText, 
+          author: quoteData.author,
+          image: authorImageUrl,
+          tags: quoteData.tags || [],
+          wikipedia: wikipediaData
+        });
+      } else {
+        setQuote({
+          text: quoteText, 
+          author: quoteData.author,
+          image: quoteData.image,
+          tags: quoteData.tags || [],
+          wikipedia: quoteData.wikipedia || { exists: false, url: '#' }
+        });
       }
-      
-      setQuote(quoteData);
     } catch (error) {
-      console.error('Quote generation error:', error);
-      // user-friendly error
+      console.error('Error generating quote:', error);
       setQuote({
-        text: "Unable to load quote. Please check your internet connection and try again.",
-        author: "Quote it",
-        image: "https://ui-avatars.com/api/?name=Quote+it&size=150&background=gradient&color=fff",
-        tags: [],
+        text: "The only way to do great work is to love what you do.",
+        author: "Steve Jobs",
+        image: "https://ui-avatars.com/api/?name=Steve+Jobs&size=150&background=gradient&color=fff",
+        tags: ["motivational"],
         wikipedia: { exists: false, url: '#' }
       });
     } finally {

@@ -72,9 +72,20 @@ function App() {
 
   const fetchWikipediaData = async (author) => {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // Shorter timeout for Wikipedia
+    
       const searchUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(author)}`;
-      const response = await fetch(searchUrl);
-      
+      const response = await fetch(searchUrl, {
+        signal: controller.signal,
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Quote-It-App/1.0'
+        }
+      });
+    
+      clearTimeout(timeoutId);
+    
       if (response.ok) {
         const data = await response.json();
         return {
@@ -84,7 +95,7 @@ function App() {
         };
       }
     } catch (error) {
-      console.log('Wikipedia fetch failed for:', author);
+      console.log('Wikipedia fetch failed for:', author, error.message);
     }
     
     return {
@@ -95,10 +106,20 @@ function App() {
 
   const fetchAuthorImage = async (author) => {
     try {
-      // get image from Wikipedia
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000); // Short timeout for images
+    
       const searchUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(author)}`;
-      const response = await fetch(searchUrl);
-      
+      const response = await fetch(searchUrl, {
+        signal: controller.signal,
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Quote-It-App/1.0'
+        }
+      });
+    
+      clearTimeout(timeoutId);
+    
       if (response.ok) {
         const data = await response.json();
         if (data.thumbnail && data.thumbnail.source) {
@@ -106,34 +127,72 @@ function App() {
         }
       }
     } catch (error) {
-      console.log('Author image fetch failed for:', author);
+      console.log('Author image fetch failed for:', author, error.message);
     }
     
-    // Fallback to UI Avatars
+    // Always return UI Avatar fallback
     return `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&size=150&background=gradient&color=fff`;
   };
 
+  //  mobile-optimized version
   const fetchQuoteFromAPI = async (category = '') => {
     try {
       const url = category 
         ? `https://api.quotable.io/random?tags=${category}`
         : 'https://api.quotable.io/random';
       
-      console.log('Fetching from:', url); 
+      console.log('Fetching quote from:', url);
       
-      const response = await fetch(url);
+      // Mobile-optimized fetch with timeout and headers
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout for mobile
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'Quote-It-App/1.0'
+        },
+        signal: controller.signal,
+        cache: 'no-cache' // Prevent mobile caching issues
+      });
+      
+      clearTimeout(timeoutId);
       
       if (!response.ok) {
-        console.error('API Response not ok:', response.status, response.statusText);
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       
       const data = await response.json();
-      console.log('Quote data received:', data); 
+      console.log('Quote API success:', data);
+      
+      // Validate the response 
+      if (!data.content && !data.text) {
+        throw new Error('Invalid quote data received');
+      }
+      
       return data;
     } catch (error) {
-      console.error('Fetch error:', error);
-      throw error;
+      console.error('Quote API Error:', error.name, error.message);
+      
+      // If it's a timeout on mobile, try one more time with different approach
+      if (error.name === 'AbortError') {
+        console.log('Timeout detected, trying fallback approach...');
+        try {
+          const fallbackResponse = await fetch('https://api.quotable.io/random', {
+            method: 'GET',
+            mode: 'cors'
+          });
+          if (fallbackResponse.ok) {
+            return await fallbackResponse.json();
+          }
+        } catch (fallbackError) {
+          console.error('Fallback also failed:', fallbackError);
+        }
+      }
+      
+      throw error; // handleClick deal with the error
     }
   };
 
@@ -258,7 +317,7 @@ function App() {
 
   return (
     <div className={`App ${darkMode ? 'dark' : 'light'}`}>
-      <h1>💫 Quote it💫</h1>
+      <h1>💫Quote it💫</h1>
       
       <div className="controls">
         <div className="control-group">
